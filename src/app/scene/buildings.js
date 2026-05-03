@@ -86,6 +86,10 @@ function makeFlag(width = 0.42, height = 0.22, mat = M.flagRed) {
       phase: i * 0.55,
       strength: 0.18 + i * 0.04
     };
+    // Flags wave every frame; flagging them noShadow means we can keep the
+    // sun shadow map static between building changes and skip the per-frame
+    // shadow pass entirely.
+    seg.userData.noShadow = true;
     g.add(seg);
   }
   return g;

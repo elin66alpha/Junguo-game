@@ -313,6 +313,15 @@
 - 小地图为主路绘制金色标记线，普通道路为棕色，玩家可快速定位主路位置。
 - 存档新增 `mainRoadTiles` / `mainRoadAxis` 字段。
 
+## 2026-05-03 - 性能优化第二轮（修复上一轮未生效的卡顿）
+
+- **修复上一轮 rAF 改造的回归**：上一轮日志说"setInterval(100ms) 改为 requestAnimationFrame，与显示器 VSync 对齐"，但 `startAnimationLoop` 的 rAF 回调里仍然写死 `if (elapsed < 100ms) return;`，等价于继续以 10 fps 渲染，相机拖动、建造预览和动画都还是卡的。本轮把节流去掉，普通设备直接吃满 rAF（一般 60 fps），低功耗设备限到 30 fps。
+- **动画改为按真实时间推进**：原来 `animTick * 0.08`、`animTick * 0.1`、`floatingNumbers ttl=90` 都是按 10 fps 帧数算的；解开节流后会快 6 倍。`Renderer.tick(dt)` 改为接收真实秒数，`animTime` 累积，`animateSceneDetails` 用 `animTime * 0.8`、`animateWaterLayer(animTime)`、`FloatingLayer.update(dtSec)` 按秒老化，老存档里的 `note.ttl=90` 自动按 `/10` 折算回 9 秒。
+- **阴影贴图按需重渲染**：场景几乎全静态，把 `renderer.shadowMap.autoUpdate` 关掉，只在 `draw({syncBuildings:true})` 或 `rebuildMap()` 后用 `shadowsDirty` 标志触发一次 `needsUpdate`。每帧省掉一次完整 shadow pass，是 GPU 大头。
+- **旗帜不再投影**：`makeFlag` 的每段 plane 加 `noShadow` 标记。原本旗帜每帧都摆动，会让阴影贴图不停脏掉，配合上一条改动后就完全静止了；视觉上 0.4×0.2 的小旗本来也看不出影子。
+- **Tooltip 节流**：`showTooltip` 用 `hoverTile + 模式` 拼一个 key，相同 key 时只更新位置 CSS，不重写 `innerHTML`。鼠标在同一格上滑动时不再每像素重排版。
+- 更新页面资源版本参数到 `0.6.1-perf`。
+
 ## 2026-05-03 - 性能优化
 
 - **森林渲染改造**：将数百个独立树干/树冠 Mesh 合并为 InstancedMesh，200 个森林格原需 ~1200 个 draw call，现仅需 5 个（1 个树干 + 4 种颜色叶片）。

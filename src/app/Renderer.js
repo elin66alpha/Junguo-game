@@ -41,6 +41,9 @@ export class Renderer {
     this.tooltip = tooltip;
     this.legend = legend;
     this.animTick = 0;
+    this.animTime = 0;          // wall-clock seconds for time-based animations
+    this.shadowsDirty = true;   // re-bake shadow map next frame
+    this._lastTooltipKey = "";  // gate redundant innerHTML writes
     this.quality = detectRenderQuality();
 
     // ---- core three setup ----
@@ -58,6 +61,11 @@ export class Renderer {
     this.renderer.setClearColor(0xbfd9e8, 1);
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.renderer.shadowMap.type = THREE.BasicShadowMap;
+    // Scene is mostly static — we only need a fresh shadow pass when buildings
+    // change. Animated meshes (flags, smoke, water) are flagged noShadow so
+    // skipping the per-frame shadow re-render is visually safe.
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 220);
     this.camera.position.set(0, 32, 34);
@@ -149,13 +157,25 @@ export class Renderer {
   showTooltip(clientX, clientY) {
     if (!this.state.hoverTile || this.state.hoverTile.x < 0) {
       this.tooltip.classList.add("hidden");
+      this._lastTooltipKey = "";
       return;
     }
     const tile = this.state.tiles[this.state.hoverTile.y * MAP_WIDTH + this.state.hoverTile.x];
     if (!tile) {
       this.tooltip.classList.add("hidden");
+      this._lastTooltipKey = "";
       return;
     }
+    // Cheap key gate: skip the innerHTML rebuild + classList work on every
+    // pixel of mouse movement when the hovered tile / mode hasn't changed.
+    // Position is still updated so the tooltip tracks the cursor.
+    const tooltipKey = `${this.state.hoverTile.x},${this.state.hoverTile.y}|${this.state.demolishMode ? "D" : "-"}|${this.state.upgradeMode ? "U" : "-"}|${this.state.selectedBuildingType || "-"}`;
+    if (tooltipKey === this._lastTooltipKey) {
+      this.tooltip.style.left = `${clientX + 12}px`;
+      this.tooltip.style.top = `${clientY + 12}px`;
+      return;
+    }
+    this._lastTooltipKey = tooltipKey;
     const building = buildingAt(this.state, this.state.hoverTile.x, this.state.hoverTile.y);
     const hotspot = (this.state.hotspots || []).find((spot) => spot.x === this.state.hoverTile.x && spot.y === this.state.hoverTile.y);
     if (building) {
@@ -215,14 +235,21 @@ export class Renderer {
     return out;
   }
 
-  // Animation tick from the app loop.
-  tick() {
+  // Animation tick from the app loop. dtSec is real elapsed seconds since the
+  // previous tick — animations are time-based so they look identical at 30 fps
+  // and 144 fps.
+  tick(dtSec = 1 / 60) {
     this.animTick += 1;
+    this.animTime += dtSec;
     this.controls.update();
     this.clampCameraToMap();
     this.animateSceneDetails();
-    animateWaterLayer(this.waterGroup, this.animTick * 0.1);
-    this.floatingLayer.update(this.camera, this.canvas);
+    animateWaterLayer(this.waterGroup, this.animTime);
+    this.floatingLayer.update(this.camera, this.canvas, dtSec);
+    if (this.quality.shadows && this.shadowsDirty) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowsDirty = false;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -234,6 +261,7 @@ export class Renderer {
       this.syncBuildings();
       this.refreshAnimationNodes();
       this.buildingsDirty = false;
+      this.shadowsDirty = true;  // building geometry changed; rebake shadows
     }
     this.ghostLayer.update(this.state);
     this.coverageLayer.update(this.state);
@@ -274,6 +302,7 @@ export class Renderer {
     this.decorationsGroup = buildDecorations(this.state);
     this.scene.add(this.decorationsGroup);
     this.buildingsDirty = true;
+    this.shadowsDirty = true;
     this.animationNodes = [];
   }
 
@@ -348,7 +377,10 @@ export class Renderer {
   }
 
   animateSceneDetails() {
-    const t = this.animTick * 0.08;
+    // Old code used `animTick * 0.08`, which advanced 0.8 / sec at the legacy
+    // 10 fps tick. Multiply animTime (seconds) by 0.8 to preserve the same
+    // perceived motion speed regardless of the now-uncapped frame rate.
+    const t = this.animTime * 0.8;
     for (const node of this.animationNodes) {
       if (node.userData?.flagWave) {
         const data = node.userData.flagWave;

@@ -19,8 +19,11 @@ import { hasAutosave } from "../sim/SaveSystem.js";
 
 const DEMOLISH_GHOST = "__demolish__";
 const UPGRADE_GHOST = "__upgrade__";
-const ANIMATION_INTERVAL_MS = 100;
-const LOW_POWER_ANIMATION_INTERVAL_MS = 160;
+// Low-power devices target 30 fps; everyone else gets full display rate (rAF
+// is naturally vsync-locked, typically 60 fps). The previous build kept a
+// 100 ms throttle inside the rAF loop, which left the camera/orbit feeling
+// like 10 fps even on capable hardware — that's the "卡顿" the player saw.
+const LOW_POWER_MIN_FRAME_MS = 1000 / 30;
 const RIGHT_CLICK_DRAG_THRESHOLD_PX = 5;
 const KEY_PAN_PIXELS = 28;
 
@@ -59,19 +62,23 @@ export class GameApp {
   }
 
   startAnimationLoop() {
-    // Use requestAnimationFrame for smooth VSync-aligned rendering instead
-    // of a fixed-interval timer that would fight the display refresh rate.
-    const minFrameMs = this.renderer.quality?.lowPower ? LOW_POWER_ANIMATION_INTERVAL_MS : ANIMATION_INTERVAL_MS;
-    let lastFrameTime = 0;
+    // Run at full display rate (typically 60 fps via rAF/vsync). Low-power
+    // devices fall back to 30 fps. Animations inside the renderer are now
+    // delta-time driven so they look correct regardless of frame rate.
+    const lowPower = !!this.renderer.quality?.lowPower;
+    const minFrameMs = lowPower ? LOW_POWER_MIN_FRAME_MS : 0;
+    let lastFrameTime = performance.now();
+    let lastRenderTime = lastFrameTime;
     this.minimapDirty = true;  // start dirty to force first paint
 
     const loop = (now) => {
       requestAnimationFrame(loop);
-      const elapsed = now - lastFrameTime;
-      if (elapsed < minFrameMs) return;  // throttle on low-power devices
-      lastFrameTime = now - (elapsed % minFrameMs);
+      if (minFrameMs > 0 && now - lastRenderTime < minFrameMs) return;
+      const dtSec = Math.min(0.1, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
+      lastRenderTime = now;
 
-      this.renderer.tick();
+      this.renderer.tick(dtSec);
       if (this.minimapDirty) {
         this.minimap.draw(this.state, this.renderer);
         this.minimapDirty = false;

@@ -2,7 +2,10 @@ import * as THREE from "three";
 import { MAP_HEIGHT, MAP_WIDTH } from "../../model/constants.js";
 import { tileElevation } from "./terrain.js";
 
-const DURATION_TICKS = 90;
+// Default lifespan in seconds. Old code used "ticks" at the legacy 10 fps
+// loop (90 ticks ≈ 9 s); we now age in real seconds so behavior is
+// independent of the now-uncapped frame rate.
+const DURATION_SECONDS = 9;
 
 // Floating "+8 粮" labels that drift up over a building. Implemented as
 // absolutely-positioned DOM elements projected from world to screen on each
@@ -10,7 +13,7 @@ const DURATION_TICKS = 90;
 export class FloatingLayer {
   constructor(container) {
     this.container = container;
-    this.entries = [];  // [{ world, text, color, ttl, age, dom }]
+    this.entries = [];  // [{ world, ttl, age, dom }] — ttl/age in seconds
   }
 
   reset() {
@@ -38,21 +41,24 @@ export class FloatingLayer {
     dom.textContent = note.text;
     dom.style.color = note.color || "#fbe3a4";
     this.container.appendChild(dom);
+    // Backwards-compat: a numeric `note.ttl` from old saves was in 10 fps
+    // ticks, so divide by 10 to convert to seconds.
+    const ttlSeconds = note.ttl != null ? note.ttl / 10 : DURATION_SECONDS;
     this.entries.push({
       world: new THREE.Vector3(tileX + 0.5 - MAP_WIDTH / 2, elev, tileY + 0.5 - MAP_HEIGHT / 2),
-      ttl: note.ttl ?? DURATION_TICKS,
+      ttl: ttlSeconds,
       age: 0,
       dom
     });
   }
 
-  update(camera, canvas) {
+  update(camera, canvas, dtSec = 1 / 60) {
     if (this.entries.length === 0) return;
     const rect = canvas.getBoundingClientRect();
     const cv = new THREE.Vector3();
     const remaining = [];
     for (const entry of this.entries) {
-      entry.age += 1;
+      entry.age += dtSec;
       const ratio = entry.age / entry.ttl;
       if (ratio >= 1) {
         entry.dom.remove();
