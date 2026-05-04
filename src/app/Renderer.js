@@ -22,14 +22,24 @@ import { pickTile } from "./scene/picking.js";
 const CAMERA_EDGE_MARGIN = 8;
 
 function detectRenderQuality() {
+  // Previous build auto-detected "low-power" via
+  //   navigator.hardwareConcurrency <= 4 || navigator.deviceMemory <= 4
+  // which fired on virtually every 4-core laptop AND on Chrome's deviceMemory
+  // (rounded to powers of 2, capped at 8GB), capping such users at 30 fps.
+  // That alone explained a lot of the "no 60fps even on a blank map" reports.
+  // We now only honor an explicit ?quality=low / ?quality=high opt-in.
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("quality");
-  const lowHardware = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
-  const lowPower = requested === "low" || (requested !== "high" && lowHardware);
+  const lowPower = requested === "low";
+  const highQuality = requested === "high";
   return {
     lowPower,
-    antialias: !lowPower,
-    maxPixelRatio: lowPower ? 1 : 1.5,
+    // Anti-aliasing has a real fragment cost; default off, opt-in via high.
+    antialias: highQuality,
+    // Cap at 1.0 by default. Retina/4K devices were being asked to render at
+    // 1.5× pixel area = 2.25× fragment work, with no real visual gain on a
+    // stylized low-poly scene. ?quality=high lifts the cap to 1.5×.
+    maxPixelRatio: highQuality ? 1.5 : 1,
     shadows: !lowPower
   };
 }

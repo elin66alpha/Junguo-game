@@ -2,10 +2,13 @@ import * as THREE from "three";
 
 export function setupLighting(scene, options = {}) {
   const shadows = options.shadows !== false;
-  const hemi = new THREE.HemisphereLight(0xe9f6ff, 0xb79a72, 1.25);
+  // Hemisphere already supplies sky-vs-ground bounce, so the previous
+  // softFill DirectionalLight was redundant tone work for every fragment.
+  // Dropping it shaves a per-fragment dot product on every Lambert mesh.
+  const hemi = new THREE.HemisphereLight(0xe9f6ff, 0xb79a72, 1.5);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff1cf, 1.45);
+  const sun = new THREE.DirectionalLight(0xfff1cf, 1.55);
   sun.position.set(42, 92, 34);
   sun.target.position.set(0, 0, 0);
   sun.castShadow = shadows;
@@ -20,12 +23,8 @@ export function setupLighting(scene, options = {}) {
   scene.add(sun);
   scene.add(sun.target);
 
-  const fill = new THREE.AmbientLight(0xffffff, 0.52);
+  const fill = new THREE.AmbientLight(0xffffff, 0.55);
   scene.add(fill);
 
-  const softFill = new THREE.DirectionalLight(0xd8ecff, 0.35);
-  softFill.position.set(-35, 45, -25);
-  scene.add(softFill);
-
-  return { hemi, sun, fill, softFill };
+  return { hemi, sun, fill };
 }

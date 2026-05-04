@@ -138,11 +138,14 @@ export function buildTerrainMesh(state) {
   geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
 
   const terrainTexture = buildTerrainTexture(state);
+  // Triangle winding is correct for a top-down/3-quarter view (top faces have
+  // normal +Y, side faces have outward-pointing normals), so DoubleSide isn't
+  // needed. Dropping it cuts fragment shader work on the 80×80 terrain mesh
+  // roughly in half — the single biggest GPU-side win for blank-map fps.
   const mat = new THREE.MeshLambertMaterial({
     vertexColors: true,
     map: terrainTexture,
-    color: 0xffffff,
-    side: THREE.DoubleSide
+    color: 0xffffff
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = "terrain";

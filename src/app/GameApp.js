@@ -71,6 +71,12 @@ export class GameApp {
     let lastRenderTime = lastFrameTime;
     this.minimapDirty = true;  // start dirty to force first paint
 
+    // FPS overlay — updated 4× / sec via a 0.5 s rolling window so it's stable
+    // enough to read while still reflecting recent stutters.
+    const fpsEl = document.querySelector("#fps-overlay");
+    let fpsWindowStart = lastFrameTime;
+    let fpsWindowFrames = 0;
+
     const loop = (now) => {
       requestAnimationFrame(loop);
       if (minFrameMs > 0 && now - lastRenderTime < minFrameMs) return;
@@ -82,6 +88,15 @@ export class GameApp {
       if (this.minimapDirty) {
         this.minimap.draw(this.state, this.renderer);
         this.minimapDirty = false;
+      }
+
+      fpsWindowFrames += 1;
+      const windowMs = now - fpsWindowStart;
+      if (fpsEl && windowMs >= 500) {
+        const fps = (fpsWindowFrames * 1000) / windowMs;
+        fpsEl.textContent = `FPS ${fps.toFixed(0)}`;
+        fpsWindowStart = now;
+        fpsWindowFrames = 0;
       }
     };
     requestAnimationFrame(loop);

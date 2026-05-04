@@ -313,6 +313,16 @@
 - 小地图为主路绘制金色标记线，普通道路为棕色，玩家可快速定位主路位置。
 - 存档新增 `mainRoadTiles` / `mainRoadAxis` 字段。
 
+## 2026-05-03 - 性能优化第三轮（找到锁帧元凶）
+
+- **拆掉自动低功耗判定**：`detectRenderQuality` 之前用 `hardwareConcurrency <= 4 || deviceMemory <= 4` 判低功耗。Chrome 的 `navigator.deviceMemory` 四舍五入到 2 的幂、上限 8GB —— 4GB 内存的机器报告 4，命中条件；同时 4 核及以下的常见 i5 笔记本也命中。一旦命中就锁 30fps、关 AA、关阴影。第二轮把节流去掉了，但这一层 lowPower 标志仍然把 minFrameMs 锁死在 1000/30，所以"空白地图也没 60 帧"。现在只认显式 `?quality=low` 才进低功耗模式，默认走全速 rAF。
+- **像素比默认降到 1.0**：之前默认 1.5，Retina/4K 上等于多渲染 2.25× 像素，对低面数风格化场景没有视觉收益。`?quality=high` 才放到 1.5。
+- **抗锯齿默认关**：默认 off，`?quality=high` 开。低面数场景关掉 AA 几乎看不出差异，省下的 fragment 时间换帧率。
+- **地形 mesh 关掉 DoubleSide**：80×80 地形的三角形绕序本来就对（顶面法线 +Y、侧面外法线），DoubleSide 让 GPU 把每个片元算两遍；关掉后地形片元工作量大致减半。
+- **场景去掉 softFill 平行光**：HemisphereLight 已经提供天空-地面双向漫反射补光，再叠一盏 DirectionalLight 是浪费每片元一次 dot product。同时把 hemi 和 sun 强度各上调一点，亮度持平。
+- **新增 FPS 显示**：右上角"操作提示"下方加一个常驻的 `FPS xx` 小框（CSS class `.fps-overlay`），每 0.5 秒按滚动窗口刷新；玩家不需要打开 DevTools 也能看实时帧率，便于判断卡顿是否真的解决。
+- 更新页面资源版本参数到 `0.6.2-perf`。
+
 ## 2026-05-03 - 性能优化第二轮（修复上一轮未生效的卡顿）
 
 - **修复上一轮 rAF 改造的回归**：上一轮日志说"setInterval(100ms) 改为 requestAnimationFrame，与显示器 VSync 对齐"，但 `startAnimationLoop` 的 rAF 回调里仍然写死 `if (elapsed < 100ms) return;`，等价于继续以 10 fps 渲染，相机拖动、建造预览和动画都还是卡的。本轮把节流去掉，普通设备直接吃满 rAF（一般 60 fps），低功耗设备限到 30 fps。

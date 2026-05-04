@@ -1329,6 +1329,24 @@ body.event-open #side-panels {
   letter-spacing: 0.5px;
 }
 
+.fps-overlay {
+  position: absolute;
+  right: 14px;
+  top: 44px;
+  padding: 4px 8px;
+  background: rgba(20, 16, 12, 0.78);
+  border: 1px solid #6b5540;
+  border-radius: 4px;
+  color: #f5d895;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 9;
+  letter-spacing: 0.5px;
+  min-width: 56px;
+  text-align: right;
+}
+
 #minimap-wrap {
   top: 14px !important;
   bottom: auto;
