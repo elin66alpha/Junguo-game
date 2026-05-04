@@ -23,6 +23,10 @@ export function initializeFestivals(state) {
 
 export function maybeOpenFestival(state) {
   initializeFestivals(state);
+  // Tests set state.suppressFestivals so deterministic month-by-month
+  // assertions aren't blown up by a festival-pendingEvent that early-returns
+  // every subsequent advanceSeason. Production never sets this flag.
+  if (state.suppressFestivals) return;
   if (state.pendingEvent) return;
   const festival = FESTIVALS[state.monthIndex];
   if (!festival) return;

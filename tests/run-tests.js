@@ -16,10 +16,20 @@ import { updateHousing } from "../src/sim/HousingSystem.js";
 const buildingDefs = JSON.parse(await readFile(new URL("../src/data/buildings.json", import.meta.url), "utf8"));
 
 function boot(seed = undefined) {
-  const state = createGameState(buildingDefs, seed);
+  // Force the WEI archetype: the test fixtures use fixed coords inside the
+  // central plain hub (rows 36..44). The runtime default is ESTUARY which
+  // routes a river through that hub, so several "plain" tiles are actually
+  // river — every test that placed a multi-tile building at (38, 38) was
+  // failing because (39, 39) / (40, 40) are river under estuary. WEI keeps
+  // the hub solid plain.
+  const state = createGameState(buildingDefs, seed, ARCHETYPES.WEI);
   initializeSeasonState(state);
   // Suppress random events during deterministic tests by holding the cooldown high.
   state.eventCooldown = 999;
+  // Seasonal festivals (春耕 / 秋报) open as pendingEvent on monthIndex 0 / 6,
+  // which then early-returns every subsequent advanceSeason. Tests never want
+  // that — they assert exact month-by-month deltas.
+  state.suppressFestivals = true;
   return state;
 }
 
@@ -35,17 +45,24 @@ function plainSpot(state, type) {
 }
 
 function buildStarterBlock(state) {
-  // Place inside the central 9x9 plain hub carved by finalize() (rows/cols 36..44).
+  // M6.1 trunk rule: only roads adjacent (via other roads) to state.mainRoadTiles
+  // count as "connected". Under WEI the trunk runs across y=36, so we put a
+  // connector at (38, 37) to bridge the trunk into the starter zone, then
+  // chain east. Hut moves to (37, 37) so it doesn't collide with the
+  // connector and still touches the trunk directly via (37, 36).
+  placeBuilding(state, "road", 38, 37);  // ← trunk connector
   placeBuilding(state, "road", 38, 38);
   placeBuilding(state, "road", 39, 38);
   placeBuilding(state, "road", 40, 38);
   placeBuilding(state, "well", 38, 39);
   placeBuilding(state, "granary", 39, 39);
-  placeBuilding(state, "hut", 38, 37);
+  placeBuilding(state, "hut", 37, 37);
 }
 
 function buildTradeStation(state) {
-  placeBuilding(state, "road", 37, 38);
+  // (38, 37) is adjacent to the WEI trunk at (38, 36) AND to tradeStation's
+  // northwest tile (38, 38), so the station goes "connected" once complete.
+  placeBuilding(state, "road", 38, 37);
   placeBuilding(state, "tradeStation", 38, 38);
   for (let i = 0; i < 2; i += 1) advanceSeason(state);
 }
@@ -71,16 +88,17 @@ run("same map seed is stable and next seed changes terrain", () => {
   assert.notEqual(a, c);
 });
 
-run("map archetype picker is deterministic and covers all three", () => {
+run("map archetype picker is deterministic and covers the active rotation", () => {
+  // Per the M5b retirement of 太行山阙 (PASS) and 江南水乡 (DELTA),
+  // pickArchetype now alternates between 渭河盆地 (WEI) and 东海入海口 (ESTUARY).
   const seen = new Set();
   for (let s = 100; s < 400; s += 1) seen.add(pickArchetype(s));
   assert.ok(seen.has(ARCHETYPES.WEI));
-  assert.ok(seen.has(ARCHETYPES.PASS));
-  assert.ok(seen.has(ARCHETYPES.DELTA));
+  assert.ok(seen.has(ARCHETYPES.ESTUARY));
 });
 
 run("each archetype generates a playable plain hub", () => {
-  for (const archetype of [ARCHETYPES.WEI, ARCHETYPES.PASS, ARCHETYPES.DELTA]) {
+  for (const archetype of [ARCHETYPES.WEI, ARCHETYPES.ESTUARY]) {
     const map = generateMap(123, archetype);
     let plainCount = 0;
     for (const tile of map.tiles) if (tile.terrain === TERRAIN.PLAIN) plainCount += 1;
@@ -190,7 +208,9 @@ run("road access controls building usability", () => {
   const farm = state.buildings.find((building) => building.type === "farm");
   assert.equal(farm.connected, false);
   const grainWithoutRoad = state.resources.grain;
-  placeBuilding(state, "road", 38, 41);
+  // Road at (38, 37) is adjacent to the WEI trunk at (38, 36) AND to the
+  // farm's NW tile, so it joins the trunk network and pulls the farm in.
+  placeBuilding(state, "road", 38, 37);
   advanceSeason(state);
   recomputeRoadAccess(state);
   assert.equal(farm.connected, true);
@@ -460,8 +480,10 @@ import { annualTribute, lumberOutput, upkeepCost } from "../src/model/formulas.j
 
 run("starting state includes wood resource", () => {
   const state = boot();
+  // M6.2 economy bump: wood/grain/cloth raised, coin held at 1000 so coin
+  // scaling thresholds in scaledCoinDelta stay stable.
   assert.equal(state.resources.coin, 1000);
-  assert.equal(state.resources.wood, 150);
+  assert.equal(state.resources.wood, 220);
   assert.equal(state.resourceCaps.cloth, 500);
 });
 
@@ -469,7 +491,9 @@ run("warehouse increases wood and cloth caps by level", () => {
   const state = boot();
   const baseWood = state.resourceCaps.wood;
   const baseCloth = state.resourceCaps.cloth;
-  placeBuilding(state, "road", 37, 38);
+  // (38, 37) joins the WEI trunk at (38, 36) and is adjacent to the
+  // warehouse's NW tile (38, 38), so the warehouse is connected once built.
+  placeBuilding(state, "road", 38, 37);
   placeBuilding(state, "warehouse", 38, 38);
   for (let i = 0; i < 2; i += 1) advanceSeason(state);
   assert.equal(state.resourceCaps.wood, baseWood + 200);
@@ -654,9 +678,12 @@ run("market commercial tax scales with housing tier and market level", () => {
 run("market commercial tax appears in coin breakdown after production", () => {
   const state = boot();
   // Drop a market and a tile-house adjacent on plain hub.
-  placeBuilding(state, "road", 38, 38);
+  // Two trunk-connector roads at y=37 so both the market (NE corner) and
+  // the hut (NW corner) hang off the trunk under the M6.1 rule.
+  placeBuilding(state, "road", 38, 37);
+  placeBuilding(state, "road", 39, 37);
   placeBuilding(state, "market", 39, 38);
-  placeBuilding(state, "hut", 38, 39);
+  placeBuilding(state, "hut", 38, 38);
   for (let i = 0; i < 3; i += 1) advanceSeason(state);
   const hut = state.buildings.find((b) => b.type === "hut");
   hut.housingTier = "tile";
@@ -670,7 +697,7 @@ run("market commercial tax appears in coin breakdown after production", () => {
 run("generated maps yield substantial fertile soil near rivers", () => {
   // After M5a generosity bump every archetype should produce well over 200
   // fertile tiles on the test seed (~3% of an 80×80 map at minimum).
-  for (const archetype of [ARCHETYPES.WEI, ARCHETYPES.PASS, ARCHETYPES.DELTA]) {
+  for (const archetype of [ARCHETYPES.WEI, ARCHETYPES.ESTUARY]) {
     const map = generateMap(123, archetype);
     let fertile = 0;
     for (const tile of map.tiles) if (tile.terrain === TERRAIN.FERTILE) fertile += 1;
@@ -680,7 +707,9 @@ run("generated maps yield substantial fertile soil near rivers", () => {
 
 run("bulk upgrade silently skips ineligible buildings, no popup needed", () => {
   const state = boot();
-  // Two wells: one connected, one floating without road access.
+  // Two wells: one trunk-connected (via (38, 37) adjacent to main road at
+  // (38, 36) and a chain south), one floating at (50, 50) without road.
+  placeBuilding(state, "road", 38, 37);
   placeBuilding(state, "road", 38, 38);
   placeBuilding(state, "well", 38, 39);
   placeBuilding(state, "well", 50, 50);

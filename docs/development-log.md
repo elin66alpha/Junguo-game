@@ -1,5 +1,21 @@
 # 开发日志
 
+## 2026-05-04 - M6.2 经济回炉与十个 sim 层 bug 修复
+
+- **十个旧测试全部修好**：基线 `node tests/run-tests.js` 从 51 PASS / 10 FAIL 跳到 61 PASS / 0 FAIL。锅大致分三类：
+  - 测试 fixture `boot()` 默认拿到 ESTUARY 地图，但 ESTUARY 中央有河，给"plain hub"留了若干 RIVER tile，所有放在 (38, 38) 的 3×3 / 2×2 占地建筑因 (39, 39) / (40, 40) 是河而拒绝放置。把测试 boot 切到 WEI archetype，hub 一直是干净平原。
+  - M6.1 trunk-only 道路连通规则：之前的几个测试还在按"任何道路就是 connected"写，把孤立道路当"已接路"用。把每个相关测试加了一根贴主路 (y=36) 的连接道路 (38, 37)。
+  - 春耕节庆在 monthIndex=0 直接弹 `pendingEvent`，导致后续 `advanceSeason` 全部早退 → 升级不计时。`maybeOpenFestival` 增加 `state.suppressFestivals` 钩子，测试 boot 默认开启。
+- **前期经济大修**（玩家反馈："前期税收不够是必死的局"）：
+  - 住房 taxPerResident 早期阶级大幅上调：小屋 0.5→1.2、瓦房 1→2.4、院宅 2→3.5。第一栋瓦房月入约 19 钱（之前 8 钱），院宅约 56 钱（之前 32 钱）。
+  - 实装 dev log 一直说但数据没动的"从深宅起递减"曲线：深宅 3.0、府第 3.2、华堂 3.0、甲第 2.7（深宅 < 院宅，即测试 `compound.taxPerResident < courtyard.taxPerResident` 期望的递减）。同时整体绝对值上调，避免后期 net 减少。
+  - 初始资源：粮 160→240，木 220、布 20→40。开局直接能起两轮基建，不会立刻饿死。钱保持 1000（避免 `scaledCoinDelta` 阈值漂移破坏事件测试）。
+  - 仓容上限：粮 240→300，木 200→300。否则起步 220 木超过 200 上限会让贸易购买静默失败（`tradeResourceRoom` 返回 0）。
+- **`getBulkUpgradeQuote` 行为修正**：框选升级现在会显式拒绝 disconnected 的非道路建筑（理由 "未接道路。"），不再静默把钱木花在死建筑上。单个 `upgradeBuilding` 不变，玩家手动操作仍可对孤立建筑预付升级费。
+- **测试 boot 切到 WEI archetype**：`createGameState(defs, seed, ARCHETYPES.WEI)`。生产默认（ESTUARY）不变；只是测试不再误踩河。
+- **`pickArchetype` 测试改为 WEI/ESTUARY 二选一**：5 月 2 日的 dev log 已经把太行山阙 (PASS) 和江南水乡 (DELTA) 退役了，但断言还在期望它们被抽到。
+- 更新页面资源版本到 `0.6.4-economy`。
+
 ## 2026-04-25 - M1 / M1.5 基础原型
 
 - 游戏是纯回合制。玩家点击“下月”或按空格推进月份；模拟不随帧率运行。

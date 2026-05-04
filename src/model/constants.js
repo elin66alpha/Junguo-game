@@ -6,8 +6,11 @@ export const MONTHS = ["正月", "二月", "三月", "四月", "五月", "六月
 export const RESOURCE_KEYS = ["grain", "wood", "cloth", "coin", "labor"];
 export const INDICATOR_KEYS = ["morale", "order", "prestige"];
 
-export const BASE_GRAIN_CAPACITY = 240;
-export const BASE_WOOD_CAPACITY = 200;
+// M6.2 economy bump: wood cap raised so the new 220 starting wood (see
+// STARTING_STATE) doesn't immediately overflow it — overflow caused trade
+// purchases to silently fail because tradeResourceRoom returned 0.
+export const BASE_GRAIN_CAPACITY = 300;
+export const BASE_WOOD_CAPACITY = 300;
 export const BASE_CLOTH_CAPACITY = 500;
 
 // 岁贡 (annual tribute) — paid every 正月 to the capital. Scales with prestige
@@ -85,21 +88,24 @@ export const ARCHETYPE_LABELS = {
 
 export const HOUSING_TIER_ORDER = ["hut", "tile", "courtyard", "compound", "manor", "estate", "noble"];
 
-// taxPerResident is intentionally tapered from 深宅 onwards (×0.8 cumulative
-// against the unscaled +0.8/tier progression) so late-game treasury isn't
-// trivially saturated by stacked top-tier homes. Commercial market tax
-// compensates — see MarketSystem.marketCommercialTax.
+// Early tiers (hut / tile / courtyard) carry the bulk of treasury income now —
+// previous values left the early game in a "no tax can sustain build cost +
+// upkeep + tribute" death spiral. From 深宅 (compound) onward we taper
+// per-resident tax (×0.8 against the prior tier's growth) so end-game
+// treasury isn't saturated by stacking top-tier homes. The market commercial
+// tax (see MarketSystem.marketCommercialTax) compensates late game.
 export const HOUSING_TIERS = {
-  hut: { label: "小屋", maxResidents: 4, taxPerResident: 0.5, clothUse: 0 },
-  tile: { label: "瓦房", maxResidents: 8, taxPerResident: 1, clothUse: 1 },
-  courtyard: { label: "院宅", maxResidents: 16, taxPerResident: 2, clothUse: 2 },
-  compound: { label: "深宅", maxResidents: 24, taxPerResident: 2.08, clothUse: 3 },
-  manor: { label: "府第", maxResidents: 36, taxPerResident: 2.18, clothUse: 4 },
-  estate: { label: "华堂", maxResidents: 50, taxPerResident: 2.15, clothUse: 5 },
-  noble: { label: "甲第", maxResidents: 70, taxPerResident: 2.05, clothUse: 6 },
-  mansion1: { label: "豪宅", maxResidents: 36, taxPerResident: 2.2, clothUse: 5 },
-  mansion2: { label: "雕梁豪宅", maxResidents: 56, taxPerResident: 2.4, clothUse: 7 },
-  mansion3: { label: "重院豪宅", maxResidents: 80, taxPerResident: 2.55, clothUse: 9 }
+  hut: { label: "小屋", maxResidents: 4, taxPerResident: 1.2, clothUse: 0 },
+  tile: { label: "瓦房", maxResidents: 8, taxPerResident: 2.4, clothUse: 1 },
+  courtyard: { label: "院宅", maxResidents: 16, taxPerResident: 3.5, clothUse: 2 },
+  // Taper starts here: compound < courtyard per design intent.
+  compound: { label: "深宅", maxResidents: 24, taxPerResident: 3.0, clothUse: 3 },
+  manor: { label: "府第", maxResidents: 36, taxPerResident: 3.2, clothUse: 4 },
+  estate: { label: "华堂", maxResidents: 50, taxPerResident: 3.0, clothUse: 5 },
+  noble: { label: "甲第", maxResidents: 70, taxPerResident: 2.7, clothUse: 6 },
+  mansion1: { label: "豪宅", maxResidents: 36, taxPerResident: 3.4, clothUse: 5 },
+  mansion2: { label: "雕梁豪宅", maxResidents: 56, taxPerResident: 3.6, clothUse: 7 },
+  mansion3: { label: "重院豪宅", maxResidents: 80, taxPerResident: 3.8, clothUse: 9 }
 };
 
 export const EDICT_SLOTS = ["tax", "relief", "discipline"];

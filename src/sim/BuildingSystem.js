@@ -358,6 +358,18 @@ export function getBulkUpgradeQuote(state, buildings) {
   let clothCost = 0;
 
   for (const building of selected) {
+    // Bulk-upgrade is a "select rectangle, upgrade everything that fits"
+    // tool. Disconnected non-road/non-bridge buildings aren't actually live,
+    // so don't sink coin/wood into them — silently skip and let the player
+    // run a single-building upgrade later if they really want to pre-pay.
+    if (
+      building.type !== "road" &&
+      building.type !== "bridge" &&
+      !building.connected
+    ) {
+      rejected.push({ building, reason: "未接道路。" });
+      continue;
+    }
     const quote = getUpgradeQuote(state, building, woodBudget, clothBudget);
     if (quote.ok) {
       eligible.push({ building, quote });
