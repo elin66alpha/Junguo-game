@@ -93,39 +93,44 @@ export function buildTerrainMesh(state) {
       emitTri([x0, e, z0], [x0, e, z1], [x1, e, z1], c, [0, 1, 0]);
 
       // Vertical side faces against neighbors with lower elevation (so we see
-      // the cliff into earth from this side).
+      // the cliff into earth from this side). The original code had these
+      // wound CW from the outside, which is why the previous build needed
+      // THREE.DoubleSide on the terrain material. Now that we render only the
+      // front side (DoubleSide was a 2× fragment cost), the side triangles
+      // need CCW winding so back-face culling keeps them visible.
       const skirtBottom = -1.2;
 
-      // -x neighbor (left)
+      // -x neighbor (left). Outward normal is -x: viewed from -x, vertices
+      // must wind CCW (top-near, bottom-far, top-far) etc.
       const eL = elevAt(tx - 1, ty);
       if (eL < e) {
         const yLo = Math.max(eL, skirtBottom);
-        emitTri([x0, e, z0], [x0, e, z1], [x0, yLo, z1], sideC, [-1, 0, 0]);
-        emitTri([x0, e, z0], [x0, yLo, z1], [x0, yLo, z0], sideC, [-1, 0, 0]);
+        emitTri([x0, e, z0], [x0, yLo, z1], [x0, e, z1], sideC, [-1, 0, 0]);
+        emitTri([x0, e, z0], [x0, yLo, z0], [x0, yLo, z1], sideC, [-1, 0, 0]);
         if (e - eL > 0.12) edgePositions.push(x0, e + 0.015, z0, x0, e + 0.015, z1);
       }
-      // +x (right)
+      // +x (right). Outward normal is +x.
       const eR = elevAt(tx + 1, ty);
       if (eR < e) {
         const yLo = Math.max(eR, skirtBottom);
-        emitTri([x1, e, z1], [x1, e, z0], [x1, yLo, z0], sideC, [1, 0, 0]);
-        emitTri([x1, e, z1], [x1, yLo, z0], [x1, yLo, z1], sideC, [1, 0, 0]);
+        emitTri([x1, e, z1], [x1, yLo, z0], [x1, e, z0], sideC, [1, 0, 0]);
+        emitTri([x1, e, z1], [x1, yLo, z1], [x1, yLo, z0], sideC, [1, 0, 0]);
         if (e - eR > 0.12) edgePositions.push(x1, e + 0.015, z1, x1, e + 0.015, z0);
       }
-      // -z (back)
+      // -z (back). Outward normal is -z.
       const eB = elevAt(tx, ty - 1);
       if (eB < e) {
         const yLo = Math.max(eB, skirtBottom);
-        emitTri([x1, e, z0], [x0, e, z0], [x0, yLo, z0], sideC, [0, 0, -1]);
-        emitTri([x1, e, z0], [x0, yLo, z0], [x1, yLo, z0], sideC, [0, 0, -1]);
+        emitTri([x1, e, z0], [x0, yLo, z0], [x0, e, z0], sideC, [0, 0, -1]);
+        emitTri([x1, e, z0], [x1, yLo, z0], [x0, yLo, z0], sideC, [0, 0, -1]);
         if (e - eB > 0.12) edgePositions.push(x1, e + 0.015, z0, x0, e + 0.015, z0);
       }
-      // +z (front)
+      // +z (front). Outward normal is +z.
       const eF = elevAt(tx, ty + 1);
       if (eF < e) {
         const yLo = Math.max(eF, skirtBottom);
-        emitTri([x0, e, z1], [x1, e, z1], [x1, yLo, z1], sideC, [0, 0, 1]);
-        emitTri([x0, e, z1], [x1, yLo, z1], [x0, yLo, z1], sideC, [0, 0, 1]);
+        emitTri([x0, e, z1], [x1, yLo, z1], [x1, e, z1], sideC, [0, 0, 1]);
+        emitTri([x0, e, z1], [x0, yLo, z1], [x1, yLo, z1], sideC, [0, 0, 1]);
         if (e - eF > 0.12) edgePositions.push(x0, e + 0.015, z1, x1, e + 0.015, z1);
       }
     }
